@@ -11,7 +11,7 @@ namespace KeyCodeInfoPlugin
     internal class Measure
     {
         private API _api;
-      
+
         private static IntPtr _hookID = IntPtr.Zero;
         private static LowLevelKeyboardProc _proc = HookCallback;
         private static Measure instance;
@@ -26,6 +26,12 @@ namespace KeyCodeInfoPlugin
         private const int WM_SYSKEYDOWN = 0x0104;
         private const int WM_KEYUP = 0x0101;
         private const int WM_SYSKEYUP = 0x0105;
+        private static string lastCombo = "";
+
+        // New field for the OnReleaseKeyAction parameter.
+        private string onReleaseKeyAction = "";
+        // Flag to ensure the release action is triggered only once per key press cycle.
+        private bool releaseActionTriggered = false;
 
         // Parameters:
         // showCodeMode:
@@ -35,30 +41,29 @@ namespace KeyCodeInfoPlugin
         //   4 = return key combination (e.g., "Ctrl + Alt + A") in order of press.
         private int showCodeMode;
         // hideForce: for modes 0, 1, and 3, if true the stored key is cleared immediately.
-        // For mode 4 (combination), keys remain until they are released.
+        // For mode 4 (combination), keys remain until released.
         private bool hideForce;
 
         /// <summary>
         /// Reload is called when Rainmeter reloads the skin.
-        /// It reads ShowCode and HideForce options and resets stored key data.
+        /// It reads ShowCode, HideForce, and OnReleaseKeyAction options and resets stored key data.
         /// (Note: the hook and update timer are not started automatically.)
         /// </summary>
         internal void Reload(API api, ref double maxValue)
         {
             _api = api;
-            // Store the instance reference for use in the static hook callback.
             instance = this;
 
-            // Read ShowCode parameter; default is 1 (numeric).
-            // Other supported values: 3 for hex, 0 for friendly names, 4 for combination.
             showCodeMode = api.ReadInt("ShowCode", 1);
-            // Read HideForce parameter; default is 1 (clear immediately).
             hideForce = api.ReadInt("HideForce", 1) == 1;
+            // Read the new OnReleaseKeyAction parameter (default to empty string).
+            onReleaseKeyAction = api.ReadString("OnReleaseKeyAction", "");
 
-            // Reset stored key data.
             lastKeyCode = 0;
             pressedKeyEvents.Clear();
             pressedKeyOrder.Clear();
+            // Reset the release flag
+            releaseActionTriggered = false;
 
             _api.Log(API.LogType.Debug, "KeyCodeInfo.dll: Plugin reloaded in stopped state.");
         }
@@ -85,9 +90,14 @@ namespace KeyCodeInfoPlugin
         {
             if (showCodeMode == 4)
             {
-                // Build combination string using press order.
+                // If no keys are currently pressed, and HideForce is off,
+                // return the last stored combination.
                 if (pressedKeyOrder.Count == 0)
+                {
+                    if (!hideForce && !string.IsNullOrEmpty(lastCombo))
+                        return lastCombo;
                     return "";
+                }
                 List<string> comboNames = new List<string>();
                 foreach (int key in pressedKeyOrder)
                 {
@@ -101,7 +111,8 @@ namespace KeyCodeInfoPlugin
                         comboNames.Add(keyName);
                     }
                 }
-                return string.Join(" + ", comboNames);
+                lastCombo = string.Join(" + ", comboNames);
+                return lastCombo;
             }
             else
             {
@@ -170,13 +181,12 @@ namespace KeyCodeInfoPlugin
                 // Start the update timer if not already running.
                 if (updateTimer == null)
                 {
-                    updateTimer = new Timer(50); // Timer interval in milliseconds.
+                    updateTimer = new Timer(100); // Timer interval in milliseconds.
                     updateTimer.Elapsed += (sender, e) =>
                     {
                         _api.Execute($"!UpdateMeasure  \"{measureName}\"");
                         _api.Execute($"!UpdateMeter  *");
                         _api.Execute($"!Redraw");
-                        // _api.Execute($"!Log  \"Updating : {measureName}\"");
                     };
                     updateTimer.AutoReset = true;
                     updateTimer.Start();
@@ -230,6 +240,7 @@ namespace KeyCodeInfoPlugin
                 updateTimer = null;
                 _api.Log(API.LogType.Debug, "KeyCodeInfo.dll: Update timer stopped on Unload.");
             }
+            lastCombo = "";
         }
 
         // Sets up the low-level keyboard hook.
@@ -255,19 +266,20 @@ namespace KeyCodeInfoPlugin
                     int key = (int)kbStruct.vkCode;
                     lastKeyCode = key;
                     lastKeyEvent = kbStruct;
-                    // If the active instance is in combination mode, update tracking.
+                    // Reset the release flag for every key press
+                    if (instance != null)
+                        instance.releaseActionTriggered = false;
+                    // For combination mode, update tracking.
                     if (instance != null && instance.showCodeMode == 4)
                     {
                         if (pressedKeyEvents.ContainsKey(key))
                         {
-                            // Remove the key from the order list so it can be re-added at the end.
                             pressedKeyOrder.Remove(key);
                         }
                         pressedKeyEvents[key] = kbStruct;
                         pressedKeyOrder.Add(key);
                     }
                 }
-                // Handle key-up events.
                 else if (wParam == (IntPtr)WM_KEYUP || wParam == (IntPtr)WM_SYSKEYUP)
                 {
                     KBDLLHOOKSTRUCT kbStruct = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
@@ -279,6 +291,22 @@ namespace KeyCodeInfoPlugin
                             pressedKeyEvents.Remove(key);
                         }
                         pressedKeyOrder.Remove(key);
+                        // In combination mode, trigger the action only when all keys are released.
+                        if (pressedKeyEvents.Count == 0 && !instance.releaseActionTriggered && !string.IsNullOrEmpty(instance.onReleaseKeyAction))
+                        {
+                            instance._api.Execute(instance.onReleaseKeyAction);
+                            instance.releaseActionTriggered = true;
+                        }
+                    }
+                    else if (instance != null)
+                    {
+                        // For non-combination modes, trigger the action on every key-up,
+                        // but only once per key press cycle.
+                        if (!instance.releaseActionTriggered && !string.IsNullOrEmpty(instance.onReleaseKeyAction))
+                        {
+                            instance._api.Execute(instance.onReleaseKeyAction);
+                            instance.releaseActionTriggered = true;
+                        }
                     }
                 }
             }

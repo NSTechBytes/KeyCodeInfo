@@ -1,7 +1,7 @@
-
 # KeyCodeInfo Plugin
 
 **KeyCodeInfo** is a Rainmeter plugin written in C# that captures keyboard events and displays key information in various formats. It supports multiple output modes such as:
+
 - **Decimal Mode (ShowCode=1):** Displays the key code as a decimal number.
 - **Hexadecimal Mode (ShowCode=3):** Displays the key code in hexadecimal format (e.g., "0x4A").
 - **Friendly Name Mode (ShowCode=0):** Displays a friendly key name (e.g., "Space", "CapsLock", "Shift").
@@ -51,9 +51,10 @@ AccurateText=1
 
 [Metadata]
 Name=KeyCodeInfo - Key Combination Skin
-Author=Your Name
+Author=NS Tech Bytes
 Information=This skin demonstrates the KeyCodeInfo plugin in combination mode with a background.
-Version=1.0
+Version=1.1
+LICENSE=MIT LICENSE
 
 ;-------------------------------------------------
 ; Background
@@ -74,6 +75,7 @@ Plugin=KeyCodeInfo
 ShowCode=4
 ; Set HideForce=0 to retain the combination until keys are released
 HideForce=0
+OnReleaseKeyAction=[!Log "Key Release"]
 
 ;-------------------------------------------------
 ; Display the key combination
@@ -121,34 +123,37 @@ DynamicVariables=1
 ### Bang Commands
 
 - **Start the Plugin:**
+
   ```
   !CommandMeasure MeasureKeyCode "Start"
   ```
-  This command starts the keyboard hook, retrieves the measure name, and starts an update timer that forces the measure, all meters, and a redraw.
 
+  This command starts the keyboard hook, retrieves the measure name, and starts an update timer that forces the measure, all meters, and a redraw.
 - **Stop the Plugin:**
+
   ```
   !CommandMeasure MeasureKeyCode "Stop"
   ```
+
   This command stops the keyboard hook and the update timer.
 
 ### Parameter Options
 
-- **ShowCode Parameter:**  
+- **ShowCode Parameter:**
+
   - `0` - Friendly key names.
   - `1` - Decimal key code.
   - `3` - Hexadecimal key code.
   - `4` - Key combination (displays keys in the order pressed).
+- **HideForce Parameter:**
 
-- **HideForce Parameter:**  
   - `1` (default) - Clears key data immediately after reading (for modes 0, 1, and 3).
   - `0` - Retains the last key until a new key press occurs (useful for combination mode).
 
 ## Troubleshooting
 
-- **Key Not Displaying:**  
-  Ensure that the DLL is placed in the correct plugins folder and that Rainmeter has been refreshed.
-- **Build Issues:**  
+- **Key Not Displaying:**Ensure that the DLL is placed in the correct plugins folder and that Rainmeter has been refreshed.
+- **Build Issues:**
   Verify that you have installed the necessary DllExporter tool and that your project settings match your target platform (x86 or x64).
 
 ## Contributing
